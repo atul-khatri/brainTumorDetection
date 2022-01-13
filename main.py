@@ -1,50 +1,84 @@
+import os
+import cv2
+from PIL import Image
 import numpy as np
-import tensorflow.keras as keras
-from tensorflow.keras.datasets import mnist
+from sklearn.model_selection import train_test_split
+from tensorflow.keras.utils import normalize, to_categorical
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense, Conv2D, MaxPool2D, Flatten, Dropout
-from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
-(X_train, y_train), (X_test, y_test) = mnist.load_data()
+from tensorflow.keras.layers import Conv2D, MaxPool2D, Activation, Dropout, Flatten, Dense
 
-X_train = X_train.astype(np.float32)/255
-X_test = X_test.astype(np.float32)/255
+image_dir = "datasets/"
+dataset = []
+label = []
+no_image_tumor = os.listdir(image_dir + "no")
+yes_image_tumor = os.listdir(image_dir + "yes")
+INPUT_SIZE = 64
 
-X_train = np.expand_dims(X_train, -1)
-X_test = np.expand_dims(X_test, -1)
+for i, image_name in enumerate(no_image_tumor):
+    if image_name.split(".")[1] == 'jpg':
+        images = cv2.imread(image_dir + "no/" + image_name)
+        image = Image.fromarray(images, 'RGB')
+        image = image.resize((INPUT_SIZE, INPUT_SIZE))
+        dataset.append(np.array(image))
+        label.append(0)
 
-y_train = keras.utils.to_categorical(y_train)
-y_test = keras.utils.to_categorical(y_test)
+for i, image_name in enumerate(yes_image_tumor):
+    if image_name.split(".")[1] == 'jpg':
+        images = cv2.imread(image_dir + "yes/" + image_name)
+        image = Image.fromarray(images, 'RGB')
+        image = image.resize((INPUT_SIZE, INPUT_SIZE))
+        dataset.append(np.array(image))
+        label.append(1)
+
+dataset = np.array(dataset)
+label = np.array(label)
+
+X_train, x_test, Y_train, y_test = train_test_split(dataset, label, test_size=0.2, random_state=0)
+
+X_train = normalize(X_train, axis=1)
+x_test = normalize(x_test, axis=1)
+
+# to_catgorical
+# Y_train = to_categorical(Y_train, num_classes=2)
+# y_test = to_categorical(y_test, num_classes=2)
 
 model = Sequential()
 
-model.add(Conv2D(32, (3, 3), input_shape=(28, 28, 1), activation='relu'))
-model.add(MaxPool2D((2, 2)))
+model.add(Conv2D(32, (3, 3), input_shape=(INPUT_SIZE, INPUT_SIZE, 3)))
+model.add(Activation('relu'))
+model.add(MaxPool2D(pool_size=(2, 2)))
 
-model.add(Conv2D(64, (3, 3), activation='relu'))
-model.add(MaxPool2D((2, 2)))
+
+model.add(Conv2D(32, (3, 3), kernel_initializer='he_uniform'))
+model.add(Activation('relu'))
+model.add(MaxPool2D(pool_size=(2, 2)))
+
+model.add(Conv2D(32, (3, 3), kernel_initializer='he_uniform'))
+model.add(Activation('relu'))
+model.add(MaxPool2D(pool_size=(2, 2)))
 
 model.add(Flatten())
 
-model.add(Dropout(0.25))
+model.add(Dense(64))
+model.add(Activation('relu'))
+model.add(Dropout(0.5))
+model.add(Dense(1))
+model.add(Activation('sigmoid'))
 
-model.add(Dense(10, activation='softmax'))
+model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
 
-# model.summary()
+# 2 dense layer for categorical
+# model.add(Dense(2))
 
-model.compile(optimizer='adam', loss=keras.losses.categorical_crossentropy, metrics=['accuracy'])
+# Activation is softmax for categorical
+# model.add(Activation('softmax'))
 
-es = EarlyStopping(monitor='val_acc', min_delta=0.01, patience=4, verbose=1)
+# lost is categorical_crossentropy
+# model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
 
-mc = ModelCheckpoint("bModel.h5", monitor='val_acc', verbose=1, save_best_only=True)
+model.fit(X_train, Y_train, batch_size=16, epochs=10, verbose=1, validation_data=(x_test, y_test), shuffle=False)
 
-cb = [es, mc]
+model.save("brain_tumor_model.h5")
 
-his = model.fit(X_train, y_train, epochs=5, validation_split=0.2, callbacks=cb)
 
-model.save("bModel.h5")
 
-''' model_S = keras.models.load_model("data/bModel.h5")
-
-score = model_S.evaluate(X_test, y_test)
-
-print(score) '''
